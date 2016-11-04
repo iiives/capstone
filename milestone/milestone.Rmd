@@ -1,0 +1,445 @@
+---
+title: "Capstone Milestone Report"
+author: "Ivy Chiang"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list=ls())
+library(tidyr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+
+#setwd("~/Foundations/DataSources/Telstra/")
+
+```
+
+# Predicting Network fault severity
+
+### Introduction
+
+In the telephony network, telephone exchanges and nodes are connected by wire, microwaves or via satellite to provide communication service for people to communicate across long distances. However service disruption can arise from physical damage and network congestion from increased call traffic. When these disruptions occur, the matter could be life and death in emergency situations or delays and losses for businesses. So to ensure network availability to service customers, Telstra is constantly monitoring the network to ensure the network is available to service customers for their communication needs. 
+
+Since these disruptions are done by nature or human activity, their forces can at times can be hard to predict but is acknowledged and managed as part of the system. When there a disruption is present, a log of the error is recorded and alternative paths is applied to cater for repairs. Some faults will only disservice customers from a decrease service capability whilst other faults can be a complete shutdown that will need immediate attention.Thus in a business point of view the dilemma is how to allocate resources effectively to reduce repair costs and proactively fix faults before they occur and avoid unnecessary costs.
+
+### Dataset
+Data has been sourced with Telstra's kaggle competition at https://www.kaggle.com/c/telstra-recruiting-network. There are 6 data tables about the following:
+
+
+*train.csv - the training set for fault severity
+
+*test.csv - the test set for fault severity
+
+*event_type.csv - event type related to the main dataset
+
+*log_feature.csv - features extracted from log files
+
+*resource_type.csv - type of resource related to the main dataset
+
+*severity_type.csv -  severity type of a warning message coming from the log
+
+####Important fields include:
+
+:    train
+     fault_severity - discrete
+|  id  |  location  |  fault_severity  |
+|-----:|-----------:|-----------------:|
+
+:    test
+|  id  |  location  |
+|-----:|-----------:|
+
+:    log_feature
+|  id  |  log_feature  |  volume  |
+|-----:|--------------:|:--------:|
+
+:    resource_type - discrete
+|  id  |  resource_type  |
+|-----:|----------------:|
+
+:    event_type - discrete
+|  id  |  event_type  |
+|-----:|-------------:|
+
+:    severity_type - discrete
+|  id  |  severity_type  |
+|-----:|----------------:|
+
+
+####Limitation
+From this data, the description of the log features is unknown, also the resource type is assumed to be a category due to the repeated use of values
+
+####Data Cleaning and wrangling
+In this data, most data did not require tidying because all tables presented columns of categorised variables and not data. Also the data itself is relatively clean, where most values are discrete values. However in loading from the log\_feature dataset, all values were joined as one variable, so these values have been extracted into 3 columns (id, log\_feature & volume ) using separate(). 
+
+During the loading of data, all data was extracted unfactorised so as for manual conversion for better understanding and control of data types. All discrete variables are also converted to numbers so as to ease analysis as numbers.
+
+Then, data is ordered by id to join tables together as one set to uncover and remove missing data ready for analysis.
+
+
+```{r }
+#loading csv files into dataframes named - train, logfeat, resourcetype, eventtype, sevtype, test
+train <-
+  read.csv("~/Foundations/DataSources/Telstra/train.csv", stringsAsFactors = FALSE ) %>% tbl_df
+
+log_feature <-
+  read.csv2("~/Foundations/DataSources/Telstra/log_feature.csv", stringsAsFactors = FALSE) %>% tbl_df
+
+resource_type <-
+  read.csv("~/Foundations/DataSources/Telstra/resource_type.csv", stringsAsFactors = FALSE) %>% tbl_df
+
+event_type <-
+  read.csv("~/Foundations/DataSources/Telstra/event_type.csv", stringsAsFactors = FALSE) %>% tbl_df
+
+sev_type <-
+  read.csv("~/Foundations/DataSources/Telstra/severity_type.csv", stringsAsFactors = FALSE ) %>%  tbl_df
+
+test <-
+  read.csv("~/Foundations/DataSources/Telstra/test.csv", stringsAsFactors = FALSE ) %>% tbl_df
+```
+
+#####Tidy log_feature
+```{r }
+str(log_feature)
+log_feature <- 
+  log_feature %>% 
+  separate(id.log_feature.volume , c("id", "log_feature", "volume"), sep = ",")
+
+```
+
+#####Clean types - log_feature
+```{r }
+str(log_feature)     # view Structure
+summary(log_feature) # Check for missing values
+
+log_feature$log_feature <- sub("feature ", "", log_feature$log_feature)
+
+log_feature$id <- as.integer(log_feature$id)
+log_feature$volume <- as.integer(log_feature$volume)
+log_feature$log_feature <- as.integer(log_feature$log_feature)
+
+head(log_feature)
+
+```
+
+#####Clean types - event_type
+```{r }
+str(event_type)
+summary(log_feature)
+
+event_type$event_type <- sub("event_type ", "", event_type$event_type)
+event_type$event_type <- as.integer(event_type$event_type)
+
+head(event_type)
+
+```
+
+#####Clean types - resource_type
+```{r }
+str(resource_type)
+
+resource_type$resource_type <- sub("resource_type ","", resource_type$resource_type)
+resource_type$resource_type <- as.integer(resource_type$resource_type)
+
+head(resource_type)
+
+```
+
+#####Clean types - sev_type
+```{r }
+str(sev_type)
+
+sev_type$severity_type <- sub("severity_type ", "", sev_type$severity_type)
+sev_type$severity_type <- as.integer(sev_type$severity_type)
+
+head(sev_type)
+
+```
+
+#####Clean types - train
+```{r }
+str(train)
+
+train$location <- sub("location ","",train$location)
+
+train$location <- as.integer(train$location)
+train$fault_severity <- as.integer(train$fault_severity)
+
+head(train)
+
+```
+
+#####Clean types - test
+```{r }
+str(test)
+test$location <- sub("location ","",test$location)
+test$location <- as.integer(test$location)
+
+head(test)
+
+```
+
+
+Order tables to prepare Joining
+```{r }
+arrange(train, id)
+arrange(log_feature, id)
+arrange(resource_type, id)
+arrange(event_type, id)
+arrange(sev_type, id)
+arrange(test, id)
+
+```
+
+Full join
+``` {r }
+network <- full_join(train, log_feature, by = c("id"="id"))
+network <- full_join(network, resource_type, by = c("id"="id"))
+network <- full_join(network, event_type, by = c("id"="id"))
+network <- full_join(network, sev_type, by = c("id"="id"))
+
+head(network)
+summary(network) # There are some logs with no location details
+str(network)
+
+#view na entries
+network  %>% filter(is.na(fault_severity)) %>% head(10)
+
+```
+
+###Preliminary exploration
+
+Firstly, let's examine each dataset
+
+#####train
+```{r error= FALSE, warning= FALSE}
+## frequency at each location
+ggplot(train, aes(x = location)) + geom_histogram(bins = 100)
+
+ggplot(network, aes(x = location)) + geom_histogram(bins = 100)
+## Removed 84584 rows containing non-finite values (stat_bin).
+##-Conclusion: some ids from joining other tables together have missing logs.
+##-Some locations have more frequent fault reporting (any correlation with resource type?)
+
+## relationship of location with id
+ggplot(train, aes(x = id, y = location, col = as.factor(fault_severity), size = as.factor(fault_severity) )) + geom_point(alpha = 0.3)
+##-There is a pattern of faults to have the same severity type hence the linear repetition across the id scale
+
+##ggplot(train, aes(x = id, y = location)) + geom_point() + facet_grid( . ~ faulty_severity)
+##Error in layout_base(data, cols, drop = drop) : 
+##  At least one layer must contain all variables used for facetting
+
+##relationship of feature with fault_severity
+ggplot(train, aes(x = location, y = fault_severity, col = as.factor(fault_severity), size = as.factor(fault_severity) )) + geom_point(alpha = 0.3)
+
+```
+
+#####log_feature
+``` {r error= FALSE, warning= FALSE}
+## frequency at each location
+ggplot(log_feature, aes(x = log_feature, y = volume, col = log_feature)) + geom_point(alpha = 0.2) + coord_cartesian(ylim = c(0, 1000)) # removed outlier
+##-The Volume variable here is a continuous measure with some log_feature more frequent than others
+
+## relationship of log_feature with id
+ggplot(log_feature, aes(x = id, y = log_feature, size = volume)) + geom_point(alpha = 0.05)
+#-There are no missing values in this dataset, but reveals some common error log_features logged regularly
+
+## Volume of the faults 
+volume_above10 <- log_feature %>% filter(volume > 10)
+ggplot(volume_above10, aes(x = id, y = log_feature, size = volume)) + geom_point(alpha = 0.05)
+##-The Volume depicted is fairly uniform to the type of feature the fault being recorded with, showing a uniform match with the fault feature recorded
+
+##-Question is of there is a relation of these log_features with location.
+ggplot(network, aes(x = location, y = log_feature, size = volume)) + geom_jitter(alpha = 0.05)
+##-Log features appear distinctly at grouped location numbers, showing where the features regularly appear like a map
+
+
+##relationship of log_feature with fault_severity
+ggplot(network, aes(x = log_feature, y = fault_severity, col = as.factor(fault_severity), size = as.factor(fault_severity) )) + geom_point(alpha = 0.3)
+
+##relationship of log_feature X location with fault_severity
+ggplot(network, aes(x = location, y = log_feature, col = as.factor(fault_severity))) + geom_point(alpha = 0.1) + facet_grid( . ~ resource_type)
+
+```
+
+#####resource_type
+``` {r error= FALSE, warning= FALSE}
+## frequency at each location
+ggplot(resource_type, aes(x= resource_type)) + geom_histogram(bins = 100)
+##There are 10 distinct resource types
+
+## relationship of resource_type with id
+ggplot(resource_type, aes(x = id, y = resource_type)) + geom_point(alpha = 0.2)
+##-Shows some resource types are more likely to be logged more frequently
+
+## relationship of resource_type with location
+ggplot(network, aes(x = location, y = resource_type)) + geom_point(alpha = 0.2)
+ggplot(network, aes(x = location, y = resource_type)) + geom_jitter(alpha = 0.2) 
+##-In comparing the locations, there is clustering on certain resource type by location number
+##-As the dataset records errors, it is unclear whether all locations have all resource types 
+##-but some location's equipment may be more prone to fault then others, this may be due to the
+##-location's position in a high traffic hub or that there particular resource is due for replacement
+
+## relationship of resource_type with log_feature, as the resource type is a discrete variable
+ggplot(network, aes(x = location, y = log_feature, col= as.factor(resource_type)) ) + geom_jitter(alpha = 0.05)
+##-Here we can tell that by location, error features logged correspond to certain resource type 
+##-at that location, with each resource having distinct log features.
+
+##-Question here will be is there any correlation of the resource type, log feature to 
+##-severity_type to produce the level of fault_severity.
+##-In plain english this maybe the pinpoint of a particular machine that location that 
+##-works as a main artery of the network to publish repair urgency.
+
+##- "location" > "resource" > "log_feature" > "Volume" ~ fault occurance
+
+## compare resource_type with fault_severity
+ggplot(network, aes(x = resource_type, y = fault_severity)) + geom_jitter(alpha = 0.05)
+
+```
+
+#####event_type
+``` {r error= FALSE, warning= FALSE}
+## frequency at each location
+ggplot(event_type, aes(event_type)) + geom_histogram(bins = 100)
+ggplot(network, aes(x = event_type)) + geom_histogram(bins = 100) # There are no missing values
+##-There appears to be distinct but also popular events.
+
+##-Question is, do these events correlation with particular resource (machine) that can 
+##-interpret level of fault severity?
+
+## relationship of event_type with id
+ggplot(event_type, aes(x = id, y = event_type)) + geom_point(alpha = 0.05)
+ggplot(event_type, aes(x = id, y = event_type)) + geom_jitter(alpha = 0.05)
+##-There are certain event types that are frequently occuring or being recorded. Reviewing with jitter does not show much gaps in frequency
+
+## relationship of event_type with resource_type
+ggplot(network, aes(x = resource_type, y = event_type)) + geom_point(alpha = 0.05) 
+## Some resource share the same event_type but the plot further shows that resource_type is a discrete variable of range 10.
+
+## relationship of event_type with log_feature where Volume is displayed differentiated by resource_type
+ggplot(network, aes(x = log_feature, y = event_type, size = volume, shape = as.factor(resource_type))) + geom_point(alpha = 0.05) 
+## The shape palette can deal with a maximum of 6 discrete values because more than 6 becomes
+## difficult to discriminate; you have 10. Consider specifying shapes manually if you must have
+## them.
+
+##-There are some event types carried over to multiple log_feature, with various event types 
+##-have varying degrees of log_feature volumes, hence there may not be any correction there, 
+##-certain fault events are more highly probable with particular resources as evidence of clusters
+
+##- At this point, volume in reference with log_feature may be telling of the quantity of equipment
+##- and not severity
+
+## further look at relationship of event_type with log_feature, sized in Volume, faceted by resource_type
+ggplot(network, aes(x = log_feature, y = event_type, size = volume, col = resource_type)) + geom_point(alpha = 0.1) + facet_grid( . ~ resource_type )
+##-Resources 4 & 6 have very similar patterns
+
+## relationship of event_type with location
+ggplot(network, aes(x = location, y = event_type, col = as.factor(resource_type))) + geom_point(alpha = 0.05)
+##-There is a similarity of pattern with "locationXresource_type" and "locationXlog_feature".
+
+##relationship of event_type with fault_severity
+ggplot(network, aes(x = event_type, y = fault_severity, col = as.factor(fault_severity), size = as.factor(fault_severity) )) + geom_point(alpha = 0.3)
+
+```
+
+######severity_type
+``` {r error= FALSE, warning= FALSE}
+## frequency at each location
+ggplot(sev_type, aes(severity_type)) + geom_histogram(bins = 100)
+ggplot(network, aes(x = severity_type)) + geom_histogram(bins = 100) # There are no missing values
+##-There appears to be 5 distinct types.
+
+## relationship of feature with id
+ggplot(sev_type, aes(x = id, y = severity_type)) + geom_jitter(alpha = 0.2)
+## The distinct categories have clear proportion clear distributed in the logs
+
+## relationship of feature with id highlighted by fault_severity
+ggplot(network, aes(x = id, y = severity_type, col = as.factor(fault_severity), size = as.factor(fault_severity))) + geom_jitter(alpha = 0.1) 
+##-Most severe faults are categorized by severity_type no.1 .
+##-Severity_type no.3 only attracts fault level of 1 .
+
+##relationship of severity_type with fault_severity
+ggplot(network, aes(x = severity_type, y = fault_severity, col = as.factor(fault_severity), size = as.factor(fault_severity) )) + geom_point(alpha = 0.3)
+##-Severity_type no.3 only attracts fault level of 1 confirmed.
+
+##relationship of feature with location highlighted with fault_severity
+ggplot(network, aes(x = location, y = severity_type, col = as.factor(fault_severity), size = as.factor(fault_severity))) + geom_jitter(alpha = 0.1) 
+##-High levels of faults appear at low number locations or locations numbered greater than 500
+
+#relationship of feature with resource_type
+ggplot(network, aes(x = resource_type, y = severity_type)) + geom_jitter(alpha = 0.05)
+
+##relationship of feature with resource_type with fault_severity highlights
+ggplot(network, aes(x = resource_type, y = severity_type, col = as.factor(fault_severity), size = as.factor(fault_severity))) + geom_point(alpha = 0.01)
+##-all resources can display the first severity type with high fault level
+
+## compare faulty severity highlights with volume
+ggplot(network, aes(x = resource_type, y = severity_type, col = volume, size = volume)) + geom_point(alpha = 0.01)
+
+
+```
+
+#####Other exploration with fault_severity
+```{r error= FALSE, warning = FALSE}
+
+##relationship of event_type X location with fault_severity
+ggplot(network, aes(x = location, y = event_type, col = as.factor(fault_severity))) + geom_point(alpha = 0.1) + facet_grid( . ~ resource_type)
+
+##relationship of event_type X log_feature with fault_severity
+ggplot(network, aes(x = log_feature, y = event_type, col = as.factor(fault_severity))) + geom_point(alpha = 0.1) + facet_grid( . ~ resource_type)
+
+## compare volume with fault_severity
+ggplot(network, aes(x = volume, y = fault_severity, col = as.factor(fault_severity))) + geom_point(alpha = 0.2)
+
+## compare event_type with fault_severity
+ggplot(network, aes(x = event_type, y = fault_severity,col = as.factor(fault_severity))) + geom_jitter(alpha = 0.2)
+
+
+## compare resource_type with fault_severity
+ggplot(network, aes(x = resource_type, y = fault_severity, col = as.factor(fault_severity), size = as.factor(fault_severity))) + geom_jitter(alpha = 0.3)
+##-Useful to interpret end prediction outcomes
+
+
+```
+###Initial Findings
+The fault_severity and volume reported seems to be highly correlated and looks to be descriptors from resource’s fault event.
+
+
+This is because each resource type seems to adopt with particular fault events and these faulty events are also sprung from particular log_features. Thus the data tells us which log is has certain circumstances and issues develop fault.
+
+
+Since each resource\_type has particular locations it often logs issues with, it is under these certain events that a prediction can be made regarding fault\_severity. There are 4 distinct characters arising from the log features where each has different volume demands at different events. Some resource types require regular attention yet the has little impact on the network.
+
+
+Meanwhile severity_types are selective depending on the type of resource, with types 1 & 2 yielding higher probability to highly network disruption.
+
+
+The trend found is that towards fault\_severity, volume and severity is deterministic to it. Meanwhile with location, particular log\_features describe resource_type
+
+
+To determine fault_severity = 2 the following events gives a high chance of outcome:
+1. Location > resource\_type >log\_feature / volume > severity_type (1 or 2)
+or 
+2.   Resource_type = 5
+
+
+
+###Approach to the problem
+
+From this analysis, different combinations will present different fault_severity predictions. The data is highly structural with many discrete variables.
+
+
+The approach to this problem is to determine the different event combinations and work out the probability to predict the fault_severity. By category and walking through the tree to obtain an estimate.
+
+
+Steps
+1. Define the resource types logged at each location.
+2. Make another table using all datasets but the train table to understand how feature or particular event type can derive which resource is at fault thus if able to reveal severity level. This then uses all values with no location log attached.
+3. Determine the probability levels of fault_severity to resource/location to conclude a prediction.
+4. Use Random Tree or XGBoost to create the model.
+5. Test the model using the test data.
+
+
